@@ -2,17 +2,15 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
-import { StudentSidebar } from "@/pages/student/components/StudentSidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   TooltipProvider,
 } from "@/components/ui/tooltip"
-import { TopBar } from "../components/TopBar"
-import { SummaryCard } from "./components/SummaryCard"
 import { RecentExamResults } from "./components/RecentExamResults"
 import { ChartCard } from "./components/ChartCard"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
+import { SummaryStatsCard } from "@/components/custom/SummaryStatsCard"
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
@@ -58,14 +56,8 @@ const StudentDashboardPage = () => {
     <SidebarProvider>
       <TooltipProvider>
         <div className="flex min-h-screen w-full bg-background">
-          {/* ── Sidebar ── */}
-          <StudentSidebar />
-
           {/* ── Main content ── */}
           <SidebarInset className="flex flex-col flex-1 min-w-0">
-            {/* Top bar */}
-            <TopBar navigator="Dashboard" />
-
             {/* Page body */}
             <ScrollArea className="flex-1">
               <main className="p-6 space-y-6 max-w-6xl mx-auto w-full">
@@ -81,7 +73,7 @@ const StudentDashboardPage = () => {
                 {/* ── Summary stat cards ── */}
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   {summaryStats.map((stat) => (
-                    <SummaryCard key={stat.label} stat={stat} />
+                    <SummaryStatsCard key={stat.label} stats={stat} />
                   ))}
                 </div>
 
