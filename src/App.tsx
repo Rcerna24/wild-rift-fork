@@ -12,6 +12,7 @@ import AdminAccountsPage from './pages/admin/accounts/AdminAccountsPage'
 import AdminCoursesPage from './pages/admin/courses/AdminCoursesPage'
 import AuthLayout from './layout/AuthLayout'
 import ProfilePage from './pages/profile/ProfilePage'
+import RequireRole from '@/components/RequireRole'
 import { IconClipboardCheckFilled, IconDashboard, IconUsers, IconBook } from '@tabler/icons-react'
 
 const studentNavigatioItems = [
@@ -40,19 +41,100 @@ const App = () => {
         <Route path="/forgot-password" element={<AccountVerificationPage />} />
 
         {/* Routes for student */}
-        <Route path="/student" element={<AuthLayout navigationItems={studentNavigatioItems}><StudentDashboardPage /></AuthLayout>} />
-        <Route path="/student/exams" element={<AuthLayout navigationItems={studentNavigatioItems}><StudentAnalyticsPage /></AuthLayout>} />
-        <Route path="/profile" element={<AuthLayout navigationItems={studentNavigatioItems}><ProfilePage /></AuthLayout>} />
+        <Route
+          path="/student"
+          element={
+            <RequireRole allowedRoles={["Student"]}>
+              <AuthLayout navigationItems={studentNavigatioItems}>
+                <StudentDashboardPage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/student/exams"
+          element={
+            <RequireRole allowedRoles={["Student"]}>
+              <AuthLayout navigationItems={studentNavigatioItems}>
+                <StudentAnalyticsPage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <RequireRole allowedRoles={["Admin", "Instructor", "Student"]}>
+              <AuthLayout navigationItems={studentNavigatioItems}>
+                <ProfilePage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
 
         {/* Routes for instructor */}
-        <Route path="/instructor" element={<AuthLayout navigationItems={instructorNavigationItems}><InstructorDashboardPage /></AuthLayout>} />
-        <Route path="/instructor/exams" element={<AuthLayout navigationItems={instructorNavigationItems}><InstructorExamsPage /></AuthLayout>} />
-        <Route path="/instructor/students" element={<AuthLayout navigationItems={instructorNavigationItems}><InstructorListStudentPage /></AuthLayout >} />
+        <Route
+          path="/instructor"
+          element={
+            <RequireRole allowedRoles={["Instructor"]}>
+              <AuthLayout navigationItems={instructorNavigationItems}>
+                <InstructorDashboardPage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/instructor/exams"
+          element={
+            <RequireRole allowedRoles={["Instructor"]}>
+              <AuthLayout navigationItems={instructorNavigationItems}>
+                <InstructorExamsPage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/instructor/students"
+          element={
+            <RequireRole allowedRoles={["Instructor"]}>
+              <AuthLayout navigationItems={instructorNavigationItems}>
+                <InstructorListStudentPage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
 
         {/* Routes for admin */}
-        <Route path="/admin" element={<AuthLayout navigationItems={adminNavigationItems}><AdminDashboardPage /></AuthLayout>} />
-        <Route path="/admin/accounts" element={<AuthLayout navigationItems={adminNavigationItems}><AdminAccountsPage /></AuthLayout>} />
-        <Route path="/admin/courses" element={<AuthLayout navigationItems={adminNavigationItems}><AdminCoursesPage /></AuthLayout>} />
+        <Route
+          path="/admin"
+          element={
+            <RequireRole allowedRoles={["Admin"]}>
+              <AuthLayout navigationItems={adminNavigationItems}>
+                <AdminDashboardPage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/admin/accounts"
+          element={
+            <RequireRole allowedRoles={["Admin"]}>
+              <AuthLayout navigationItems={adminNavigationItems}>
+                <AdminAccountsPage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/admin/courses"
+          element={
+            <RequireRole allowedRoles={["Admin"]}>
+              <AuthLayout navigationItems={adminNavigationItems}>
+                <AdminCoursesPage />
+              </AuthLayout>
+            </RequireRole>
+          }
+        />
       </Routes>
     </Router>
   )

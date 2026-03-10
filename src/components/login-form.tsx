@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { signIn } from "@/lib/auth"
+import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 
 export function LoginForm({
@@ -34,7 +35,22 @@ export function LoginForm({
       }
 
       const user = (data as any)?.user ?? (data as any)?.session?.user
-      const role = (user?.user_metadata?.role || user?.app_metadata?.role || "student") as string
+
+      // Try to read authoritative role from profiles table first
+      let roleFromProfile: string | null = null
+      if (user?.id) {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle()
+
+        if (!profileError && profile?.role) {
+          roleFromProfile = profile.role as string
+        }
+      }
+
+      const role = (roleFromProfile || user?.user_metadata?.role || user?.app_metadata?.role || "student") as string
       const r = role.toLowerCase()
 
       if (r.includes("admin")) navigate("/admin")
