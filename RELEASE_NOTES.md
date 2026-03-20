@@ -9,6 +9,7 @@ A web-based application designed to streamline the process of checking multiple-
 | Internal Release Code | Date Released |
 |-----------------------|---------------|
 | WR.010.001            | 2026-02-27   |
+| WR.010.002            | 2026-03-20    |
 | …                     | …             |
 
 ### WR.010.001 Release Notes
@@ -24,6 +25,14 @@ A web-based application designed to streamline the process of checking multiple-
 - Add MIT License to the project
 - Delete app css file to give way for main index css file and testing the tailwind functionality
 - Tailwind CSS and ShadCN setup
+
+### WR.010.002 Release Notes
+- Implement admin user interface
+- Configures Supabase for authentication
+- Adds Supabase authentication
+- Add supabase js and Tanstack React Query libraries
+- Implement use fetch profile hook to fetch profile when authenticated
+- Implement custom fetch user using React Query
 
 
 **Important Links:**
