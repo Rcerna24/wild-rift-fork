@@ -9,8 +9,7 @@ import {
 } from "@/components/ui/dialog"
 
 export interface DeleteTarget {
-  type: "course" | "subject"
-  id: number
+  course_id: string
   name: string
 }
 
@@ -26,11 +25,10 @@ const DeleteCourseDialog = ({ open, onOpenChange, target, onConfirm }: DeleteCou
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Delete {target?.type === "course" ? "Examination" : "Subject"}</DialogTitle>
+          <DialogTitle>Delete Examination</DialogTitle>
           <DialogDescription>
             Are you sure you want to delete <strong>{target?.name}</strong>?
-            {target?.type === "course" && " This will also delete all its subjects and enrollment data."}
-            {target?.type === "subject" && " This will also remove it from the examination."}
+            {" This will also delete all its subjects and enrollment data."}
             {" "}This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
