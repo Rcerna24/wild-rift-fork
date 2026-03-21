@@ -11,7 +11,6 @@ type AccountForm = {
   lastName: string
   email: string
   role: "Student" | "Instructor" | "Admin"
-  course: string
 }
 
 type CreateAccountDialogProps = {
@@ -31,7 +30,6 @@ const CreateAccountDialog = ({
   editingId,
   form,
   setForm,
-  courses,
   handleSave,
   openCreate,
 }: CreateAccountDialogProps) => {
@@ -113,7 +111,7 @@ const CreateAccountDialog = ({
             </div>
             <div className="space-y-1.5">
               <Label>Course</Label>
-              <Select
+              {/* <Select
                 value={form.course}
                 onValueChange={(v) => setForm({ ...form, course: v })}
               >
@@ -125,7 +123,7 @@ const CreateAccountDialog = ({
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select> */}
             </div>
           </div>
         </div>
