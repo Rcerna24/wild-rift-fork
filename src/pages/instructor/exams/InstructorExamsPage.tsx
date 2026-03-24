@@ -32,6 +32,8 @@ import { ScannerPanel } from "./components/ScannerPanel"
 import { StudentScoresTable } from "./components/StudentScoresTable"
 import { ExamAnalyticsPanel } from "./components/ExamAnalyticsPanel"
 import { ExamDialog } from "./dialogs/ExamDialog"
+import { supabase } from "@/lib/supabase/supabase"
+import { useFetchCourses } from "@/lib/supabase/course/context/use-fetch-courses"
 
 // ── Mock data helpers ──────────────────────────────────────────────────────────
 
@@ -330,18 +332,29 @@ const InstructorExamsPage = () => {
 
   // Create exam form state
   const [newTitle, setNewTitle] = useState("")
-  const [newCourse, setNewCourse] = useState("")
+  const [newCourseId, setNewCourseId] = useState("")
   const [newDate, setNewDate] = useState("")
   const [newTotalItems, setNewTotalItems] = useState("")
   const [newPassingRate, setNewPassingRate] = useState("75")
   const [newTopics, setNewTopics] = useState("")
+
+  const { courses } = useFetchCourses()
+
+  function resetForm() {
+    setNewTitle("")
+    setNewCourseId("")
+    setNewDate("")
+    setNewTotalItems("")
+    setNewPassingRate("75")
+    setNewTopics("")
+  }
 
   const selectedExam = exams.find((e) => e.id === selectedExamId) ?? null
 
   // ── Handlers ──
 
   function handleCreateExam() {
-    if (!newTitle || !newCourse || !newDate || !newTotalItems || !newTopics)
+    if (!newTitle || !newCourseId || !newDate || !newTotalItems || !newTopics)
       return
 
     const topicNames = newTopics
@@ -354,33 +367,54 @@ const InstructorExamsPage = () => {
       name,
     }))
 
-    const newExam: Exam = {
-      id: Date.now(),
-      title: newTitle,
-      course: newCourse,
-      date: newDate,
-      totalItems: parseInt(newTotalItems) || 100,
-      passingRate: parseInt(newPassingRate) || 75,
-      status: "Draft",
-      studentsEnrolled: 0,
-      papersScanned: 0,
-      topics,
-      answerKeys: [],
-      studentResults: [],
-      scannedPapers: [],
-    }
+    const passingRateNum = parseInt(newPassingRate) || 75
 
-    setExams((prev) => [...prev, newExam])
-    setSelectedExamId(newExam.id)
-    setCreateDialogOpen(false)
+    ;(async () => {
+      const { data, error } = await supabase.rpc("rpc_create_exam", {
+        p_course_id: newCourseId,
+        p_exam_title: newTitle,
+        p_exam_date: newDate || null,
+        p_passing_rate: passingRateNum || null,
+        p_topics: topicNames.length ? topicNames : null,
+      }) as any
 
-    // Reset form
-    setNewTitle("")
-    setNewCourse("")
-    setNewDate("")
-    setNewTotalItems("")
-    setNewPassingRate("75")
-    setNewTopics("")
+      if (error) {
+        console.error("Error creating exam:", error)
+        return
+      }
+
+      const created = data as any
+
+      const courseName = courses.find((c) => c.getCourseId === created.course_id)?.getCourseName ?? ""
+
+      const newExam: Exam = {
+        id: Date.now(),
+        title: created.exam_title || newTitle,
+        course: courseName || newCourseId,
+        date: created.exam_date ? String(created.exam_date) : newDate,
+        totalItems: parseInt(newTotalItems) || 100,
+        passingRate: passingRateNum,
+        status: "Draft",
+        studentsEnrolled: 0,
+        papersScanned: 0,
+        topics,
+        answerKeys: [],
+        studentResults: [],
+        scannedPapers: [],
+      }
+
+      setExams((prev) => [...prev, newExam])
+      setSelectedExamId(newExam.id)
+      setCreateDialogOpen(false)
+
+      // Reset form
+      setNewTitle("")
+      setNewCourseId("")
+      setNewDate("")
+      setNewTotalItems("")
+      setNewPassingRate("75")
+      setNewTopics("")
+    })()
   }
 
   function handleSaveAnswerKeys(examId: number, keys: AnswerKeyItem[]) {
@@ -652,8 +686,8 @@ const InstructorExamsPage = () => {
           setCreateDialogOpen={setCreateDialogOpen}
           newTitle={newTitle}
           setNewTitle={setNewTitle}
-          newCourse={newCourse}
-          setNewCourse={setNewCourse}
+          newCourseId={newCourseId}
+          setNewCourseId={setNewCourseId}
           newDate={newDate}
           setNewDate={setNewDate}
           newTotalItems={newTotalItems}
@@ -663,6 +697,10 @@ const InstructorExamsPage = () => {
           newTopics={newTopics}
           setNewTopics={setNewTopics}
           handleCreateExam={handleCreateExam}
+          onCancel={() => {
+            resetForm()
+          }}
+          courses={courses}
         />
       </TooltipProvider>
     </SidebarProvider>
