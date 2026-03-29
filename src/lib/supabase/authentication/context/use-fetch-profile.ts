@@ -8,6 +8,22 @@ import { useEffect } from "react";
 const getProfile = async (user: AuthUser | null | undefined): Promise<UserProfile | null | undefined> => {
   if (!user) return null;
 
+  const email = user.email ?? "";
+  const emailNamePart = email.split("@")[0] ?? "";
+  const normalizedName = emailNamePart.replace(/[._-]+/g, " ").trim();
+  const fallbackFirstName = user.user_metadata?.first_name ?? normalizedName.split(" ")[0] ?? "User";
+  const derivedLastName = normalizedName.split(" ").slice(1).join(" ");
+  const fallbackLastName = (user.user_metadata?.last_name ?? derivedLastName) || "Member";
+
+  const buildFallbackProfile = () => new UserProfile({
+    user_id: user.id,
+    first_name: fallbackFirstName,
+    middle_name: null,
+    last_name: fallbackLastName,
+    email,
+    role: "Student",
+  });
+
 
   const { data: profileData, error } = await supabase
     .from('profiles')
@@ -15,7 +31,7 @@ const getProfile = async (user: AuthUser | null | undefined): Promise<UserProfil
       'first_name, middle_name, last_name, email, role'
     )
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
   
   if (error) {
@@ -23,13 +39,18 @@ const getProfile = async (user: AuthUser | null | undefined): Promise<UserProfil
     throw new Error(error.message);
   }
 
+  if (!profileData) {
+    return buildFallbackProfile();
+  }
+
   return profileData ? new UserProfile({
+    user_id: user.id,
     first_name: profileData.first_name,
     middle_name: profileData.middle_name,
     last_name: profileData.last_name,
     email: profileData.email,
     role: profileData.role,
-  }) : null;
+  }) : buildFallbackProfile();
 }
 
 // Custom hook to fetch the authenticated user's profile using React Query
@@ -40,8 +61,8 @@ const useFetchProfile = () => {
   const { data: authUser, isLoading: isAuthUserLoading } = useQuery({
     queryKey: ['authUser'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      return user;
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.user ?? null;
     },
     // Don't refetch the auth user on window focus or at intervals, since Supabase handles session persistence and updates internally
     refetchOnWindowFocus: false,

@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import {
   Select,
@@ -17,16 +18,22 @@ import {
   GraduationCap,
   UserCog,
   Users,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
 } from "lucide-react"
 import { DeleteConfirmationDialog } from "./dialogs/DeleteConfirmationDialog"
 import { UserProfile } from "@/model/user-profile"
 import { adminSignUp } from "@/lib/supabase/authentication/auth"
-import supabase from "@/lib/supabase/supabase"
 import { toast } from "sonner"
 import { useFetchUsers } from "@/lib/supabase/authentication/context/use-fetch-users"
+import { generateRandomPassword } from "@/lib/password-generator"
+import { fetchActiveLicensureExamNames } from "@/lib/licensure-exams-api"
 
-const courses = ["BSCS", "BSIT", "BSN", "BSEd", "BSA", "BSCE"]
+// Email validation regex
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000"
 
 // ── Empty form state ───────────────────────────────────────────────────────────
 
@@ -35,13 +42,16 @@ const emptyForm = {
   middleName: "",
   lastName: "",
   email: "",
+  password: "",
   role: "Student" as "Student" | "Instructor" | "Admin",
+  prcExamType: "",
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
 const AdminAccountsPage = () => {
-  const { users, isLoading } = useFetchUsers()
+  const { users, isLoading, refetch } = useFetchUsers()
+  const [licensureExams, setLicensureExams] = useState<string[]>([])
 
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<"All" | "Student" | "Instructor">("All")
@@ -50,6 +60,12 @@ const AdminAccountsPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
+  const [isSaving, setIsSaving] = useState(false)
+  const [emailStatus, setEmailStatus] = useState<{
+    show: boolean
+    status: 'success' | 'warning' | 'error'
+    message: string
+  }>({ show: false, status: 'success', message: '' })
 
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -59,9 +75,11 @@ const AdminAccountsPage = () => {
   const filtered = useMemo(() => {
     return users.filter((a) => {
       const name = a.fullName.toLowerCase()
+      const prcExamType = (a.getPrcExamType ?? "").toLowerCase()
       const matchesSearch =
         name.includes(search.toLowerCase()) ||
-        a.getEmailAddress.toLowerCase().includes(search.toLowerCase())
+        a.getEmailAddress.toLowerCase().includes(search.toLowerCase()) ||
+        prcExamType.includes(search.toLowerCase())
       const matchesRole = roleFilter === "All" || a.getUserRole === roleFilter
       return matchesSearch && matchesRole
     })
@@ -73,9 +91,30 @@ const AdminAccountsPage = () => {
 
 
   // ── Handlers ──
+  useEffect(() => {
+    const loadLicensureExams = async () => {
+      try {
+        const exams = await fetchActiveLicensureExamNames()
+        setLicensureExams(exams)
+      } catch (error) {
+        console.error("Failed to load licensure exams", error)
+        toast.error("Failed to load PRC licensure exams")
+      }
+    }
+
+    void loadLicensureExams()
+  }, [])
+
   function openCreate() {
     setEditingId(null)
-    setForm(emptyForm)
+    // Generate a random password for new accounts
+    const generatedPassword = generateRandomPassword(12)
+    setForm({
+      ...emptyForm,
+      password: generatedPassword,
+      prcExamType: licensureExams[0] ?? "",
+    })
+    setEmailStatus({ show: false, status: 'success', message: '' })
     setDialogOpen(true)
   }
 
@@ -86,55 +125,183 @@ const AdminAccountsPage = () => {
       middleName: account.getMiddleName ?? "",
       lastName: account.getLastName,
       email: account.getEmailAddress,
+      password: "",
       role: account.getUserRole ?? "Student",
-      // course: account.getCourse ?? "",
+      prcExamType: account.getPrcExamType ?? licensureExams[0] ?? "",
     })
     setDialogOpen(true)
   }
 
   async function handleSave() {
-    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) {
-      toast.error("Please fill in all required fields.")
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim() || !form.prcExamType.trim()) {
+      toast.error("Please fill in all required fields (First Name, Last Name, Email, PRC Licensure Exam)")
       return
     }
 
+    // Validate email format
+    if (!EMAIL_REGEX.test(form.email)) {
+      toast.error("Please enter a valid email address")
+      return
+    }
+
+    // Check if email already exists - strong validation
+    const emailLower = form.email.toLowerCase().trim()
+    const emailExists = users.some(u => {
+      const userEmailLower = u.getEmailAddress.toLowerCase().trim()
+      return userEmailLower === emailLower && u.getUserId !== editingId
+    })
+    if (emailExists) {
+      toast.error("❌ This email is already registered. Each email can only be used once.")
+      return
+    }
+
+    setIsSaving(true)
+
     try {
-      // Create user in auth
-      const { data, error } = await adminSignUp(
-        form.email,
-        "12345678",
-      )
-
-      if (error || !data.user) {
-        toast.error(`Failed to create account: ${error?.message ?? "Unknown error"}`)
-        return
-      }
-
-      // Update the profile with the rest of the data
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .insert({
-          user_id: data.user.id,
-          first_name: form.firstName,
-          middle_name: form.middleName,
-          last_name: form.lastName,
-          email: form.email,
-          role: form.role,
-          // course: form.course,
+      if (editingId) {
+        const response = await fetch(`${BACKEND_URL}/api/accounts/${editingId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            firstName: form.firstName,
+            middleName: form.middleName,
+            lastName: form.lastName,
+            email: form.email,
+            role: form.role,
+            prcExamType: form.prcExamType,
+          }),
         })
 
-      if (profileError) {
-        toast.error(`Failed to update profile: ${profileError.message}`)
-        return
-      }
+        const payload = await response.json().catch(() => ({}))
 
-      toast.success("Account created successfully!")
-      setDialogOpen(false)
-      setForm(emptyForm)
-      setEditingId(null)
+        if (!response.ok) {
+          toast.error(`Failed to update account: ${payload?.error ?? "Unknown error"}`)
+          setIsSaving(false)
+          return
+        }
+
+        await refetch()
+
+        toast.success("Account updated successfully!")
+        setDialogOpen(false)
+        setForm(emptyForm)
+        setEditingId(null)
+      } else {
+        // Create new account
+        const { data, error } = await adminSignUp(
+          form.email,
+          form.password,
+          {
+            firstName: form.firstName,
+            middleName: form.middleName,
+            lastName: form.lastName,
+            role: form.role,
+            prcExamType: form.prcExamType,
+          },
+        )
+
+        if (error || !data.user) {
+          toast.error(`Failed to create account: ${error?.message ?? "Unknown error"}`)
+          setIsSaving(false)
+          return
+        }
+
+        if (data.profileCreated === false) {
+          toast.warning("Account created, but profile setup did not complete.")
+        }
+
+        // Send account creation notification email
+        try {
+          const emailResponse = await fetch(
+            `${import.meta.env.VITE_BACKEND_URL || "http://localhost:5000"}/api/accounts/notify-creation`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                email: form.email,
+                firstName: form.firstName,
+                role: form.role,
+                temporaryPassword: form.password,
+                appUrl: window.location.origin,
+              }),
+            }
+          )
+
+          const emailData = await emailResponse.json()
+
+          if (emailData.emailSent) {
+            setEmailStatus({
+              show: true,
+              status: 'success',
+              message: `✓ Email successfully sent to ${form.email}. Welcome email with temporary password has been delivered.`
+            })
+            toast.success("✓ Account created and welcome email sent successfully!", {
+              duration: 10000,
+              closeButton: true,
+            })
+            
+            // Auto-dismiss success alert after 8 seconds
+            setTimeout(() => {
+              setEmailStatus(prev => ({ ...prev, show: false }))
+            }, 8000)
+          } else if (emailResponse.status === 503) {
+            // SMTP not configured - account created but email not sent
+            console.warn("[AccountCreation] SMTP not configured")
+            setEmailStatus({
+              show: true,
+              status: 'warning',
+              message: `⚠ Account created but email was NOT sent. SMTP is not configured. User must reset password or contact support.`
+            })
+            toast.warning("⚠ Account created. Email not sent - SMTP not configured.", {
+              duration: 15000,
+              closeButton: true,
+            })
+          } else {
+            // Email failed to send
+            setEmailStatus({
+              show: true,
+              status: 'error',
+              message: `❌ Account created but welcome email could not be sent to ${form.email}. Contact support to resend.`
+            })
+            toast.error("❌ Account created but welcome email could not be sent.", {
+              duration: 15000,
+              closeButton: true,
+            })
+            console.warn("[AccountCreation] Email sending failed:", emailData)
+          }
+        } catch (emailErr) {
+          console.warn("[AccountCreation] Failed to send notification email:", emailErr)
+          setEmailStatus({
+            show: true,
+            status: 'error',
+            message: `❌ Account created but an error occurred while sending the welcome email. Please retry.`
+          })
+          toast.error("⚠ Account created but welcome email could not be sent.", {
+            duration: 15000,
+            closeButton: true,
+          })
+        }
+
+        // Close dialog after account creation (both edit and create)
+        setDialogOpen(false)
+        await refetch()
+
+        // Focus the newly created account in the table regardless of sort order.
+        setSearch(form.email.trim())
+        setRoleFilter("All")
+        
+        setForm(emptyForm)
+        setEditingId(null)
+      }
     } catch (err) {
-      toast.error("An unexpected error occurred.")
-      console.error(err)
+      console.error("[AccountCreation] Error saving account:", err)
+      toast.error("An unexpected error occurred while saving the account.")
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -171,11 +338,50 @@ const AdminAccountsPage = () => {
             editingId={editingId}
             form={form}
             setForm={setForm}
-            courses={courses}
+            licensureExams={licensureExams}
             handleSave={handleSave}
             openCreate={openCreate}
+            isSaving={isSaving}
           />
         </div>
+
+        {/* ── Email Status Alert ── */}
+        {emailStatus.show && (
+          <Alert className={`border-2 ${
+            emailStatus.status === 'success' 
+              ? 'border-green-500 bg-green-50 dark:bg-opacity-10' 
+              : emailStatus.status === 'warning'
+              ? 'border-amber-500 bg-amber-50 dark:bg-opacity-10'
+              : 'border-red-500 bg-red-50 dark:bg-opacity-10'
+          }`}>
+            <div className="flex items-start gap-3">
+              {emailStatus.status === 'success' && (
+                <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+              )}
+              {emailStatus.status === 'warning' && (
+                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              )}
+              {emailStatus.status === 'error' && (
+                <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              )}
+              <AlertDescription className={`${
+                emailStatus.status === 'success'
+                  ? 'text-green-800 dark:text-green-200'
+                  : emailStatus.status === 'warning'
+                  ? 'text-amber-800 dark:text-amber-200'
+                  : 'text-red-800 dark:text-red-200'
+              }`}>
+                {emailStatus.message}
+              </AlertDescription>
+              <button
+                onClick={() => setEmailStatus({ ...emailStatus, show: false })}
+                className="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+          </Alert>
+        )}
 
         {/* ── Summary badges ── */}
         <div className="flex items-center gap-3">
