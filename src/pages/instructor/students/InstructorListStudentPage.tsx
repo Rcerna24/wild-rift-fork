@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase/supabase"
+import { RefreshCw } from "lucide-react"
+import { toast } from "sonner"
 import type { Student } from "./types"
 import { getStudentAnalytics } from "./types"
 
@@ -176,7 +179,7 @@ const InstructorListStudentPage = () => {
   }, [])
 
   // Fetch students assigned to this instructor
-  const { data: students = [], isLoading } = useQuery({
+  const { data: students = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["instructorAssignedStudents", instructorId],
     queryFn: () => fetchInstructorAssignedStudents(instructorId),
     enabled: !!instructorId,
@@ -276,11 +279,26 @@ const InstructorListStudentPage = () => {
       <main className="p-4 sm:p-6 space-y-5 max-w-6xl mx-auto w-full">
 
         {/* Page header */}
-        <div>
-          <h1 className="text-2xl font-bold">Students</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            {filtered.length} student{filtered.length !== 1 ? "s" : ""} assigned to you
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Students</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              {filtered.length} student{filtered.length !== 1 ? "s" : ""} assigned to you
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              await refetch()
+              toast.success("Student list refreshed")
+            }}
+            disabled={isRefetching}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            {isRefetching ? 'Refreshing...' : 'Refresh'}
+          </Button>
         </div>
 
         {students.length === 0 ? (
