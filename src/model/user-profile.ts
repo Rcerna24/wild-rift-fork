@@ -5,6 +5,7 @@ export class UserProfile {
   private last_name: string
   private email: string
   private role: "Instructor" | "Student" | "Admin"
+  private prc_exam_type: string | null
   private dateCreated: string
 
   constructor({
@@ -14,6 +15,7 @@ export class UserProfile {
     last_name,
     email,
     role,
+    prc_exam_type,
     dateCreated
   }: {
     user_id?: string | UserProfile,
@@ -22,6 +24,7 @@ export class UserProfile {
     last_name: string,
     email: string,
     role: "Instructor" | "Student" | "Admin",
+    prc_exam_type?: string | null,
     dateCreated?: string
   }) {
     if (user_id instanceof UserProfile) {
@@ -31,6 +34,7 @@ export class UserProfile {
       this.last_name = user_id.last_name
       this.email = user_id.email
       this.role = user_id.role
+      this.prc_exam_type = user_id.prc_exam_type
       this.dateCreated = user_id.dateCreated
     } else {
       this.user_id = user_id!
@@ -39,6 +43,7 @@ export class UserProfile {
       this.last_name = last_name!
       this.email = email!
       this.role = role!
+      this.prc_exam_type = prc_exam_type ?? null
       this.dateCreated = dateCreated || new Date().toISOString()
     }
   }
@@ -85,6 +90,14 @@ export class UserProfile {
 
   set setUserRole(role: "Instructor" | "Student" | "Admin") {
     this.role = role
+  }
+
+  get getPrcExamType() {
+    return this.prc_exam_type
+  }
+
+  set setPrcExamType(examType: string | null) {
+    this.prc_exam_type = examType
   }
 
   get getDateCreated() {

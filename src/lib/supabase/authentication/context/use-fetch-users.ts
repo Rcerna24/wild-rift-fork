@@ -1,27 +1,48 @@
 import { UserProfile } from "@/model/user-profile";
-import { supabase } from "../../supabase";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+type AccountApiRow = {
+  user_id: string
+  first_name: string
+  middle_name?: string | null
+  last_name: string
+  email: string
+  role: string
+  prc_exam_type?: string | null
+  created_at?: string | null
+}
+
+const toUserRole = (role: string): "Instructor" | "Student" | "Admin" => {
+  if (role === "Instructor" || role === "Student" || role === "Admin") {
+    return role
+  }
+
+  return "Student"
+}
 
 const fetchUsers = async () : Promise<UserProfile[]> => {
-  const { data, error } = await supabase.from('profiles').select('*').neq('role', 'Admin').range(0, 20).order('last_name', { ascending: true });
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+  const response = await fetch(`${backendUrl}/api/accounts`);
+  const payload = await response.json();
 
-  if (error) {
-    console.error("Error fetching users:", error);
-    throw new Error(error.message);
+  if (!response.ok) {
+    throw new Error(payload?.error || "Failed to fetch users");
   }
+
+  const data: AccountApiRow[] = Array.isArray(payload?.accounts) ? payload.accounts : [];
 
   const users: UserProfile[] = [];
 
-  data.forEach((user) => {
+  data.forEach((user: AccountApiRow) => {
     users.push(new UserProfile({
       user_id: user.user_id,
       first_name: user.first_name,
       middle_name: user.middle_name,
       last_name: user.last_name,
       email: user.email,
-      role: user.role,
-      dateCreated: user.created_at,
+      role: toUserRole(user.role),
+      prc_exam_type: user.prc_exam_type ?? null,
+      dateCreated: user.created_at ?? undefined,
     }));
   });
 
@@ -30,33 +51,13 @@ const fetchUsers = async () : Promise<UserProfile[]> => {
 
 
 export const useFetchUsers = () => {
-  const queryClient = useQueryClient();
-
   // A query to get all users
-  const { data: users, isLoading } = useQuery({
+  const { data: users, isLoading, refetch } = useQuery({
     queryKey: ['profiles'],
     queryFn: fetchUsers,
     // We can set a reasonable stale time for the users data, since it may change (e.g. if an admin creates a new account)
     staleTime: 5 * 60 * 1000 // 5 minutes
   })
 
-  useEffect(() => {
-    const channel = supabase
-      .channel('profiles-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'profiles' },
-        (payload) => {
-          console.log('Change received!', payload);
-          queryClient.invalidateQueries({ queryKey: ['profiles'] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
-
-  return { users: users ?? [], isLoading };
+  return { users: users ?? [], isLoading, refetch };
 }

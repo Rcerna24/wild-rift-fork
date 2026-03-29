@@ -44,7 +44,7 @@ const AccountTable = ({ users, onEdit, onDelete }: AccountTableProps) => {
               <TableHead className="pl-5">Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead>Course</TableHead>
+              <TableHead>PRC Exam</TableHead>
               <TableHead>Date Created</TableHead>
               <TableHead className="text-right pr-5">Actions</TableHead>
             </TableRow>
@@ -65,6 +65,9 @@ const AccountTable = ({ users, onEdit, onDelete }: AccountTableProps) => {
                     <Badge className={roleBadgeClass(account.getUserRole)} variant="secondary">
                       {account.getUserRole}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {account.getPrcExamType ?? "Not set"}
                   </TableCell>
                   {/* <TableCell>{account.getExamReview || "—"}</TableCell> */}
                   <TableCell className="text-muted-foreground">{account.getDateCreated}</TableCell>
