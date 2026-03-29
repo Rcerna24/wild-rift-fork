@@ -3,6 +3,7 @@ import { useFetchProfile } from './lib/supabase/authentication/context/use-fetch
 import { Spinner } from './components/ui/spinner';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/login/LoginPage';
+import AccountRequestPage from './pages/login/AccountRequestPage';
 import AccountVerificationPage from './pages/verification/AccountVerificationPage';
 import ForcePasswordChangePage from './pages/verification/ForcePasswordChangePage';
 import RequireRole from './components/RequireRole';
@@ -92,6 +93,7 @@ function ConfiguredAppRouter() {
       <Routes>
         <Route path="/" element={isLoggedIn ? <Navigate to={needsPasswordChange ? '/force-password-change' : getRoleBasedPath(userRole)} replace /> : <LandingPage />} />
         <Route path="/login" element={isLoggedIn ? <Navigate to={needsPasswordChange ? '/force-password-change' : getRoleBasedPath(userRole)} replace /> : <LoginPage />} />
+        <Route path="/account-request" element={isLoggedIn ? <Navigate to={needsPasswordChange ? '/force-password-change' : getRoleBasedPath(userRole)} replace /> : <AccountRequestPage />} />
         <Route path="/forgot-password" element={isLoggedIn ? <Navigate to={getRoleBasedPath(userRole)} replace /> : <AccountVerificationPage />} />
         <Route
           path="/force-password-change"

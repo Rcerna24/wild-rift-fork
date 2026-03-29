@@ -111,6 +111,13 @@ export function LoginForm({
                 </Button>
               </Field>
 
+              <p className="text-sm text-center text-muted-foreground">
+                No account yet?{" "}
+                <Link to="/account-request" className="text-teal-700 hover:text-teal-800 underline underline-offset-2">
+                  Request an account
+                </Link>
+              </p>
+
               {errorDetails && (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                   <p className="font-semibold">Login failed</p>
