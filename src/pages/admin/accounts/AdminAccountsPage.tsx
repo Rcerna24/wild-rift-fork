@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -29,6 +31,11 @@ import { toast } from "sonner"
 import { useFetchUsers } from "@/lib/supabase/authentication/context/use-fetch-users"
 import { generateRandomPassword } from "@/lib/password-generator"
 import { fetchActiveLicensureExamNames } from "@/lib/licensure-exams-api"
+import {
+  fetchAccountRequests,
+  reviewAccountRequest,
+  type AccountRequestRecord,
+} from "@/lib/account-requests-api"
 
 // Email validation regex
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -61,6 +68,9 @@ const AdminAccountsPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false)
+  const [accountRequests, setAccountRequests] = useState<AccountRequestRecord[]>([])
+  const [requestActionId, setRequestActionId] = useState<number | null>(null)
   const [emailStatus, setEmailStatus] = useState<{
     show: boolean
     status: 'success' | 'warning' | 'error'
@@ -70,6 +80,7 @@ const AdminAccountsPage = () => {
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // ── Filtering & pagination ──
   const filtered = useMemo(() => {
@@ -91,6 +102,19 @@ const AdminAccountsPage = () => {
 
 
   // ── Handlers ──
+  const loadAccountRequests = async () => {
+    setIsLoadingRequests(true)
+    try {
+      const requests = await fetchAccountRequests("pending")
+      setAccountRequests(requests)
+    } catch (error) {
+      console.error("Failed to load account requests", error)
+      toast.error("Failed to load account requests")
+    } finally {
+      setIsLoadingRequests(false)
+    }
+  }
+
   useEffect(() => {
     const loadLicensureExams = async () => {
       try {
@@ -103,7 +127,87 @@ const AdminAccountsPage = () => {
     }
 
     void loadLicensureExams()
+    void loadAccountRequests()
   }, [])
+
+  const sendAccountCreationNotificationEmail = async (payload: {
+    email: string
+    firstName: string
+    role: "Student" | "Instructor" | "Admin"
+    temporaryPassword: string
+  }) => {
+    try {
+      const emailResponse = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:5000"}/api/accounts/notify-creation`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: payload.email,
+            firstName: payload.firstName,
+            role: payload.role,
+            temporaryPassword: payload.temporaryPassword,
+            appUrl: window.location.origin,
+          }),
+        },
+      )
+
+      const emailData = await emailResponse.json().catch(() => ({}))
+
+      if (emailData.emailSent) {
+        setEmailStatus({
+          show: true,
+          status: "success",
+          message: `✓ Email successfully sent to ${payload.email}. Welcome email with temporary password has been delivered.`,
+        })
+        toast.success("✓ Account created and welcome email sent successfully!", {
+          duration: 10000,
+          closeButton: true,
+        })
+        setTimeout(() => {
+          setEmailStatus((prev) => ({ ...prev, show: false }))
+        }, 8000)
+        return
+      }
+
+      if (emailResponse.status === 503) {
+        setEmailStatus({
+          show: true,
+          status: "warning",
+          message: "⚠ Account created but email was NOT sent. SMTP is not configured. User must reset password or contact support.",
+        })
+        toast.warning("⚠ Account created. Email not sent - SMTP not configured.", {
+          duration: 15000,
+          closeButton: true,
+        })
+        return
+      }
+
+      setEmailStatus({
+        show: true,
+        status: "error",
+        message: `❌ Account created but welcome email could not be sent to ${payload.email}. Contact support to resend.`,
+      })
+      toast.error("❌ Account created but welcome email could not be sent.", {
+        duration: 15000,
+        closeButton: true,
+      })
+      console.warn("[AccountCreation] Email sending failed:", emailData)
+    } catch (emailErr) {
+      console.warn("[AccountCreation] Failed to send notification email:", emailErr)
+      setEmailStatus({
+        show: true,
+        status: "error",
+        message: "❌ Account created but an error occurred while sending the welcome email. Please retry.",
+      })
+      toast.error("⚠ Account created but welcome email could not be sent.", {
+        duration: 15000,
+        closeButton: true,
+      })
+    }
+  }
 
   function openCreate() {
     setEditingId(null)
@@ -212,79 +316,12 @@ const AdminAccountsPage = () => {
           toast.warning("Account created, but profile setup did not complete.")
         }
 
-        // Send account creation notification email
-        try {
-          const emailResponse = await fetch(
-            `${import.meta.env.VITE_BACKEND_URL || "http://localhost:5000"}/api/accounts/notify-creation`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                email: form.email,
-                firstName: form.firstName,
-                role: form.role,
-                temporaryPassword: form.password,
-                appUrl: window.location.origin,
-              }),
-            }
-          )
-
-          const emailData = await emailResponse.json()
-
-          if (emailData.emailSent) {
-            setEmailStatus({
-              show: true,
-              status: 'success',
-              message: `✓ Email successfully sent to ${form.email}. Welcome email with temporary password has been delivered.`
-            })
-            toast.success("✓ Account created and welcome email sent successfully!", {
-              duration: 10000,
-              closeButton: true,
-            })
-            
-            // Auto-dismiss success alert after 8 seconds
-            setTimeout(() => {
-              setEmailStatus(prev => ({ ...prev, show: false }))
-            }, 8000)
-          } else if (emailResponse.status === 503) {
-            // SMTP not configured - account created but email not sent
-            console.warn("[AccountCreation] SMTP not configured")
-            setEmailStatus({
-              show: true,
-              status: 'warning',
-              message: `⚠ Account created but email was NOT sent. SMTP is not configured. User must reset password or contact support.`
-            })
-            toast.warning("⚠ Account created. Email not sent - SMTP not configured.", {
-              duration: 15000,
-              closeButton: true,
-            })
-          } else {
-            // Email failed to send
-            setEmailStatus({
-              show: true,
-              status: 'error',
-              message: `❌ Account created but welcome email could not be sent to ${form.email}. Contact support to resend.`
-            })
-            toast.error("❌ Account created but welcome email could not be sent.", {
-              duration: 15000,
-              closeButton: true,
-            })
-            console.warn("[AccountCreation] Email sending failed:", emailData)
-          }
-        } catch (emailErr) {
-          console.warn("[AccountCreation] Failed to send notification email:", emailErr)
-          setEmailStatus({
-            show: true,
-            status: 'error',
-            message: `❌ Account created but an error occurred while sending the welcome email. Please retry.`
-          })
-          toast.error("⚠ Account created but welcome email could not be sent.", {
-            duration: 15000,
-            closeButton: true,
-          })
-        }
+        await sendAccountCreationNotificationEmail({
+          email: form.email,
+          firstName: form.firstName,
+          role: form.role,
+          temporaryPassword: form.password,
+        })
 
         // Close dialog after account creation (both edit and create)
         setDialogOpen(false)
@@ -310,20 +347,122 @@ const AdminAccountsPage = () => {
     setDeleteDialogOpen(true)
   }
 
-  function handleDelete() {
-    if (deletingId !== null) {
-      // setAccounts((prev) => prev.filter((a) => a.getUserId !== deletingId))
+  async function handleDelete() {
+    if (!deletingId || isDeleting) {
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/accounts/${deletingId}`, {
+        method: "DELETE",
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toast.error(`Failed to delete account: ${payload?.error ?? "Unknown error"}`)
+        return
+      }
+
+      await refetch()
+      toast.success("Account deleted successfully!")
       setDeleteDialogOpen(false)
       setDeletingId(null)
+    } catch (error) {
+      console.error("Failed to delete account", error)
+      toast.error("An unexpected error occurred while deleting the account.")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  async function handleApproveRequest(requestItem: AccountRequestRecord) {
+    setRequestActionId(requestItem.id)
+
+    const role = requestItem.role === "Instructor" ? "Instructor" : "Student"
+    const prcExamType = (requestItem.prc_exam_type ?? "").trim()
+
+    if (!prcExamType) {
+      toast.error("Cannot approve request without PRC Licensure Exam.")
+      setRequestActionId(null)
+      return
+    }
+
+    try {
+      const temporaryPassword = generateRandomPassword(12)
+      const { data, error } = await adminSignUp(
+        requestItem.email,
+        temporaryPassword,
+        {
+          firstName: requestItem.first_name,
+          middleName: requestItem.middle_name ?? "",
+          lastName: requestItem.last_name,
+          role,
+          prcExamType,
+        },
+      )
+
+      if (error || !data?.user) {
+        toast.error(`Failed to approve request: ${error?.message ?? "Unknown error"}`)
+        return
+      }
+
+      await sendAccountCreationNotificationEmail({
+        email: requestItem.email,
+        firstName: requestItem.first_name,
+        role,
+        temporaryPassword,
+      })
+
+      await reviewAccountRequest(
+        requestItem.id,
+        "approved",
+        "Approved and account created.",
+        "Admin",
+      )
+
+      await Promise.all([refetch(), loadAccountRequests()])
+      toast.success(`Approved request for ${requestItem.email}`)
+    } catch (error) {
+      console.error("Failed to approve account request", error)
+      const message = error instanceof Error ? error.message : "Failed to approve account request"
+      toast.error(message)
+    } finally {
+      setRequestActionId(null)
+    }
+  }
+
+  async function handleRejectRequest(requestItem: AccountRequestRecord) {
+    const notes = window.prompt("Optional reason for rejection:", "")
+    if (notes === null) {
+      return
+    }
+
+    setRequestActionId(requestItem.id)
+    try {
+      await reviewAccountRequest(
+        requestItem.id,
+        "rejected",
+        notes.trim() || "Rejected by admin.",
+        "Admin",
+      )
+      await loadAccountRequests()
+      toast.success(`Rejected request for ${requestItem.email}`)
+    } catch (error) {
+      console.error("Failed to reject account request", error)
+      const message = error instanceof Error ? error.message : "Failed to reject account request"
+      toast.error(message)
+    } finally {
+      setRequestActionId(null)
     }
   }
 
   return (
     <ScrollArea className="flex-1">
-      <main className="p-6 space-y-6 max-w-6xl mx-auto w-full">
+      <main className="p-4 sm:p-6 space-y-6 max-w-6xl mx-auto w-full">
 
         {/* Page title */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold">Account Management</h1>
             <p className="text-muted-foreground text-sm mt-0.5">
@@ -384,27 +523,101 @@ const AdminAccountsPage = () => {
         )}
 
         {/* ── Summary badges ── */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <Users className="size-4" />
             <span>{users.length} total</span>
           </div>
-          <Separator orientation="vertical" className="h-4" />
+          <Separator orientation="vertical" className="h-4 hidden sm:block" />
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <GraduationCap className="size-4" />
             <span>{studentCount} students</span>
           </div>
-          <Separator orientation="vertical" className="h-4" />
+          <Separator orientation="vertical" className="h-4 hidden sm:block" />
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <UserCog className="size-4" />
             <span>{instructorCount} instructors</span>
           </div>
         </div>
 
+        {/* ── Pending account requests ── */}
+        <Card>
+          <CardHeader className="border-b pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base font-semibold">Account Requests</CardTitle>
+              <Badge variant="secondary">{accountRequests.length} pending</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 space-y-3">
+            {isLoadingRequests ? (
+              <p className="text-sm text-muted-foreground">Loading account requests...</p>
+            ) : accountRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No pending account requests.</p>
+            ) : (
+              accountRequests.map((requestItem) => (
+                <div key={requestItem.id} className="rounded-lg border p-3 space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {requestItem.first_name} {requestItem.last_name}
+                      </p>
+                      <p className="text-sm text-muted-foreground break-all">{requestItem.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{requestItem.role}</Badge>
+                      <Badge variant="secondary">Pending</Badge>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    <p>
+                      <span className="font-medium text-foreground">PRC Exam:</span>{" "}
+                      {requestItem.prc_exam_type || "Not specified"}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Submitted:</span>{" "}
+                      {requestItem.created_at
+                        ? new Date(requestItem.created_at).toLocaleString()
+                        : "Unknown"}
+                    </p>
+                    {requestItem.request_message ? (
+                      <p className="break-words">
+                        <span className="font-medium text-foreground">Message:</span>{" "}
+                        {requestItem.request_message}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive hover:text-destructive"
+                      disabled={requestActionId === requestItem.id}
+                      onClick={() => void handleRejectRequest(requestItem)}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={requestActionId === requestItem.id}
+                      onClick={() => void handleApproveRequest(requestItem)}
+                    >
+                      {requestActionId === requestItem.id ? "Processing..." : "Approve"}
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
         {/* ── Search & Filter bar ── */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
@@ -418,7 +631,7 @@ const AdminAccountsPage = () => {
                 value={roleFilter}
                 onValueChange={(v) => { setRoleFilter(v as typeof roleFilter) }}
               >
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-full sm:w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -442,7 +655,12 @@ const AdminAccountsPage = () => {
           />
         )}
 
-        <DeleteConfirmationDialog handleDelete={handleDelete} open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} />
+        <DeleteConfirmationDialog
+          handleDelete={handleDelete}
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          isDeleting={isDeleting}
+        />
       </main>
     </ScrollArea>
   )

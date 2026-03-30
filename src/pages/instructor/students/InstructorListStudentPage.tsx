@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase/supabase"
+import { RefreshCw } from "lucide-react"
+import { toast } from "sonner"
 import type { Student } from "./types"
 import { getStudentAnalytics } from "./types"
 
@@ -32,25 +35,9 @@ const fetchInstructorAssignedStudents = async (instructorId?: string): Promise<S
   if (!instructorId) return []
 
   try {
-    console.debug("Fetching students assigned to instructor:", instructorId)
+    console.debug("Fetching students with same PRC exam type as instructor:", instructorId)
 
-    // 1) Read admin-managed instructor-student mappings from backend.
-    const mappingsResponse = await fetch(`${BACKEND_URL}/api/assignments/mappings`)
-    const mappingsPayload = await mappingsResponse.json().catch(() => ({}))
-    if (!mappingsResponse.ok) {
-      throw new Error(mappingsPayload?.error || "Failed to fetch assignment mappings")
-    }
-
-    const mappings = Array.isArray(mappingsPayload?.mappings) ? mappingsPayload.mappings : []
-    const assignedStudentIds = mappings
-      .filter((m: { instructor_id?: string; student_id?: string }) => m?.instructor_id === instructorId && !!m?.student_id)
-      .map((m: { student_id: string }) => m.student_id)
-
-    if (assignedStudentIds.length === 0) {
-      return []
-    }
-
-    // 2) Get student profiles from backend accounts API.
+    // 1) Get all accounts
     const accountsResponse = await fetch(`${BACKEND_URL}/api/accounts`)
     const accountsPayload = await accountsResponse.json().catch(() => ({}))
     if (!accountsResponse.ok) {
@@ -58,17 +45,36 @@ const fetchInstructorAssignedStudents = async (instructorId?: string): Promise<S
     }
 
     const accounts = Array.isArray(accountsPayload?.accounts) ? accountsPayload.accounts : []
-    const studentProfiles = accounts.filter(
-      (account: { user_id?: string; role?: string }) =>
-        account?.role === "Student" && !!account?.user_id && assignedStudentIds.includes(account.user_id),
+    
+    // 2) Find the instructor's PRC exam type
+    const instructor = accounts.find((account: { user_id?: string; role?: string }) => 
+      account?.user_id === instructorId && account?.role === 'Instructor'
     )
+    
+    if (!instructor || !instructor.prc_exam_type) {
+      console.debug("Instructor not found or has no PRC exam type")
+      return []
+    }
+
+    const instructorPrcExamType = instructor.prc_exam_type
+    console.debug("Instructor PRC exam type:", instructorPrcExamType)
+
+    // 3) Filter students with the same PRC exam type
+    const studentProfiles = accounts.filter(
+      (account: { user_id?: string; role?: string; prc_exam_type?: string }) =>
+        account?.role === "Student" && 
+        !!account?.user_id && 
+        account?.prc_exam_type === instructorPrcExamType
+    )
+
+    console.debug("Found students with matching PRC exam type:", studentProfiles.length)
 
     const studentIds = studentProfiles.map((profile: { user_id: string }) => profile.user_id)
     if (studentIds.length === 0) {
       return []
     }
 
-    // 3) Optionally load results for these students from instructor's exams.
+    // 4) Load exam results for these students
     const { data: instructorExams, error: examsError } = await supabase
       .from("exams")
       .select("id")
@@ -168,17 +174,24 @@ const InstructorListStudentPage = () => {
   useEffect(() => {
     const getInstructor = async () => {
       const { data: { user } } = await supabase.auth.getUser()
+      console.debug("Auth user:", user)
       if (user) {
+        console.debug("Setting instructorId to:", user.id)
         setInstructorId(user.id)
+      } else {
+        console.debug("No user found")
       }
     }
     getInstructor()
   }, [])
 
   // Fetch students assigned to this instructor
-  const { data: students = [], isLoading } = useQuery({
+  const { data: students = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["instructorAssignedStudents", instructorId],
-    queryFn: () => fetchInstructorAssignedStudents(instructorId),
+    queryFn: () => {
+      console.debug("Query function called with instructorId:", instructorId)
+      return fetchInstructorAssignedStudents(instructorId)
+    },
     enabled: !!instructorId,
     staleTime: 1000 * 60 * 5,
   })
@@ -276,11 +289,26 @@ const InstructorListStudentPage = () => {
       <main className="p-4 sm:p-6 space-y-5 max-w-6xl mx-auto w-full">
 
         {/* Page header */}
-        <div>
-          <h1 className="text-2xl font-bold">Students</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            {filtered.length} student{filtered.length !== 1 ? "s" : ""} assigned to you
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Students</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              {filtered.length} student{filtered.length !== 1 ? "s" : ""} assigned to you
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              await refetch()
+              toast.success("Student list refreshed")
+            }}
+            disabled={isRefetching}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            {isRefetching ? 'Refreshing...' : 'Refresh'}
+          </Button>
         </div>
 
         {students.length === 0 ? (

@@ -223,6 +223,31 @@ const fetchInstructorExams = async (instructorId: string): Promise<Exam[]> => {
 
     console.debug("Fetching exams for instructor:", instructorId)
 
+    // First, get the instructor's PRC exam type to count assigned students
+    const { data: instructorData, error: instructorError } = await supabase
+      .from("profiles")
+      .select("prc_exam_type")
+      .eq("user_id", instructorId)
+      .eq("role", "Instructor")
+      .single()
+
+    let assignedStudentsCount = 0
+    if (!instructorError && instructorData?.prc_exam_type) {
+      // Count students with the same PRC exam type
+      const { count, error: countError } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true })
+        .eq("role", "Student")
+        .eq("prc_exam_type", instructorData.prc_exam_type)
+        .eq("is_active", true)
+
+      if (!countError && count !== null) {
+        assignedStudentsCount = count
+      }
+    }
+
+    console.debug("Assigned students count:", assignedStudentsCount)
+
     // Fetch all exams for this instructor.
     const { data: exams, error: examsError } = await supabase
       .from("exams")
@@ -292,7 +317,7 @@ const fetchInstructorExams = async (instructorId: string): Promise<Exam[]> => {
           totalItems,
           passingRate,
           status: normalizeExamStatus(exam.status),
-          studentsEnrolled: studentResults.length,
+          studentsEnrolled: assignedStudentsCount,
           papersScanned: studentResults.length,
           topics,
           answerKeys,
