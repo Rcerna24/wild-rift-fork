@@ -32,40 +32,12 @@ type StudentResultRow = {
 // ── Data Fetching Function ─────────────────────────────────────────────────────
 
 const fetchInstructorAssignedStudents = async (instructorId?: string): Promise<Student[]> => {
-  if (!instructorId) {
-    console.debug("No instructorId provided")
-    return []
-  }
+  if (!instructorId) return []
 
   try {
-    console.debug("Fetching students assigned to instructor:", instructorId)
+    console.debug("Fetching students with same PRC exam type as instructor:", instructorId)
 
-    // 1) Read admin-managed instructor-student mappings from backend.
-    const mappingsResponse = await fetch(`${BACKEND_URL}/api/assignments/mappings`)
-    const mappingsPayload = await mappingsResponse.json().catch(() => ({}))
-    if (!mappingsResponse.ok) {
-      throw new Error(mappingsPayload?.error || "Failed to fetch assignment mappings")
-    }
-
-    const mappings = Array.isArray(mappingsPayload?.mappings) ? mappingsPayload.mappings : []
-    console.debug("All mappings:", mappings)
-    
-    const assignedStudentIds = mappings
-      .filter((m: { instructor_id?: string; student_id?: string }) => {
-        const matches = m?.instructor_id === instructorId && !!m?.student_id
-        console.debug(`Mapping ${m?.instructor_id} === ${instructorId}? ${matches}`)
-        return matches
-      })
-      .map((m: { student_id: string }) => m.student_id)
-
-    console.debug("Assigned student IDs:", assignedStudentIds)
-
-    if (assignedStudentIds.length === 0) {
-      console.debug("No assigned students found")
-      return []
-    }
-
-    // 2) Get student profiles from backend accounts API.
+    // 1) Get all accounts
     const accountsResponse = await fetch(`${BACKEND_URL}/api/accounts`)
     const accountsPayload = await accountsResponse.json().catch(() => ({}))
     if (!accountsResponse.ok) {
@@ -73,26 +45,36 @@ const fetchInstructorAssignedStudents = async (instructorId?: string): Promise<S
     }
 
     const accounts = Array.isArray(accountsPayload?.accounts) ? accountsPayload.accounts : []
-    console.debug("All accounts:", accounts.map(a => ({ id: a.user_id, role: a.role })))
     
+    // 2) Find the instructor's PRC exam type
+    const instructor = accounts.find((account: { user_id?: string; role?: string }) => 
+      account?.user_id === instructorId && account?.role === 'Instructor'
+    )
+    
+    if (!instructor || !instructor.prc_exam_type) {
+      console.debug("Instructor not found or has no PRC exam type")
+      return []
+    }
+
+    const instructorPrcExamType = instructor.prc_exam_type
+    console.debug("Instructor PRC exam type:", instructorPrcExamType)
+
+    // 3) Filter students with the same PRC exam type
     const studentProfiles = accounts.filter(
-      (account: { user_id?: string; role?: string }) => {
-        const isStudent = account?.role === "Student"
-        const hasId = !!account?.user_id
-        const isAssigned = assignedStudentIds.includes(account.user_id!)
-        console.debug(`Account ${account?.user_id}: role=${account?.role}, isStudent=${isStudent}, hasId=${hasId}, isAssigned=${isAssigned}`)
-        return isStudent && hasId && isAssigned
-      }
+      (account: { user_id?: string; role?: string; prc_exam_type?: string }) =>
+        account?.role === "Student" && 
+        !!account?.user_id && 
+        account?.prc_exam_type === instructorPrcExamType
     )
 
-    console.debug("Filtered student profiles:", studentProfiles.length)
+    console.debug("Found students with matching PRC exam type:", studentProfiles.length)
 
     const studentIds = studentProfiles.map((profile: { user_id: string }) => profile.user_id)
     if (studentIds.length === 0) {
       return []
     }
 
-    // 3) Optionally load results for these students from instructor's exams.
+    // 4) Load exam results for these students
     const { data: instructorExams, error: examsError } = await supabase
       .from("exams")
       .select("id")
