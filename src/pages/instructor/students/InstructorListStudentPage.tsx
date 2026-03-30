@@ -32,7 +32,10 @@ type StudentResultRow = {
 // ── Data Fetching Function ─────────────────────────────────────────────────────
 
 const fetchInstructorAssignedStudents = async (instructorId?: string): Promise<Student[]> => {
-  if (!instructorId) return []
+  if (!instructorId) {
+    console.debug("No instructorId provided")
+    return []
+  }
 
   try {
     console.debug("Fetching students assigned to instructor:", instructorId)
@@ -45,11 +48,20 @@ const fetchInstructorAssignedStudents = async (instructorId?: string): Promise<S
     }
 
     const mappings = Array.isArray(mappingsPayload?.mappings) ? mappingsPayload.mappings : []
+    console.debug("All mappings:", mappings)
+    
     const assignedStudentIds = mappings
-      .filter((m: { instructor_id?: string; student_id?: string }) => m?.instructor_id === instructorId && !!m?.student_id)
+      .filter((m: { instructor_id?: string; student_id?: string }) => {
+        const matches = m?.instructor_id === instructorId && !!m?.student_id
+        console.debug(`Mapping ${m?.instructor_id} === ${instructorId}? ${matches}`)
+        return matches
+      })
       .map((m: { student_id: string }) => m.student_id)
 
+    console.debug("Assigned student IDs:", assignedStudentIds)
+
     if (assignedStudentIds.length === 0) {
+      console.debug("No assigned students found")
       return []
     }
 
@@ -61,10 +73,19 @@ const fetchInstructorAssignedStudents = async (instructorId?: string): Promise<S
     }
 
     const accounts = Array.isArray(accountsPayload?.accounts) ? accountsPayload.accounts : []
+    console.debug("All accounts:", accounts.map(a => ({ id: a.user_id, role: a.role })))
+    
     const studentProfiles = accounts.filter(
-      (account: { user_id?: string; role?: string }) =>
-        account?.role === "Student" && !!account?.user_id && assignedStudentIds.includes(account.user_id),
+      (account: { user_id?: string; role?: string }) => {
+        const isStudent = account?.role === "Student"
+        const hasId = !!account?.user_id
+        const isAssigned = assignedStudentIds.includes(account.user_id!)
+        console.debug(`Account ${account?.user_id}: role=${account?.role}, isStudent=${isStudent}, hasId=${hasId}, isAssigned=${isAssigned}`)
+        return isStudent && hasId && isAssigned
+      }
     )
+
+    console.debug("Filtered student profiles:", studentProfiles.length)
 
     const studentIds = studentProfiles.map((profile: { user_id: string }) => profile.user_id)
     if (studentIds.length === 0) {
@@ -171,8 +192,12 @@ const InstructorListStudentPage = () => {
   useEffect(() => {
     const getInstructor = async () => {
       const { data: { user } } = await supabase.auth.getUser()
+      console.debug("Auth user:", user)
       if (user) {
+        console.debug("Setting instructorId to:", user.id)
         setInstructorId(user.id)
+      } else {
+        console.debug("No user found")
       }
     }
     getInstructor()
@@ -181,7 +206,10 @@ const InstructorListStudentPage = () => {
   // Fetch students assigned to this instructor
   const { data: students = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["instructorAssignedStudents", instructorId],
-    queryFn: () => fetchInstructorAssignedStudents(instructorId),
+    queryFn: () => {
+      console.debug("Query function called with instructorId:", instructorId)
+      return fetchInstructorAssignedStudents(instructorId)
+    },
     enabled: !!instructorId,
     staleTime: 1000 * 60 * 5,
   })
